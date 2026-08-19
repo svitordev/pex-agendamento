@@ -1,13 +1,17 @@
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from './schedule/schedule.module';
-import { UsersModule } from './users/users.module';
-import { OrdersModule } from './orders/orders.module';
 import { ProfessionalsModule } from './professionals/professionals.module';
 import { AppointmentsModule } from './appointments/appointments.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { ServicesModule } from './services/services.module';
+import { AvailabilitiesModule } from './availabilities/availabilities.module';
 
 @Module({
-  imports: [ScheduleModule, UsersModule, OrdersModule, ProfessionalsModule, AppointmentsModule],
-  controllers: [],
-  providers: [],
+  imports: [
+    PrismaModule,
+    ProfessionalsModule,
+    AppointmentsModule,
+    ServicesModule,
+    AvailabilitiesModule,
+  ],
 })
 export class AppModule {}

@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// AUTENTICAÇÃO E USUÁRIOS
+// ============================================
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  password       String
+  firstName      String
+  lastName       String
+  role           Role         @default(PROFESSIONAL)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relações
+  professional   Professional? @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  professionalId String?       @unique
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  PROFESSIONAL
+  CUSTOMER
+}
+
+// ============================================
+// PROFISSIONAIS (Multi-tenant ready)
+// ============================================
+
+model Professional {
+  id          String   @id @default(cuid())
+  slug        String   @unique // Link público: /professional/jessicasantana
+  name        String
+  bio         String?  @db.Text
+  avatarUrl   String?
+  themeColors Json?    // {"primary": "#FF69B4", "secondary": "#333"} - Customização visual SaaS
+  instagram   String?
+  facebook    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relações
+  user      User?
+  services  Service[]
+  appointments Appointment[]
+  availabilities Availability[]
+
+  @@map("professionals")
+}
+
+// ============================================
+// SERVIÇOS OFERECIDOS
+// ============================================
+
+model Service {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?  @db.Text
+  durationMinutes Int      // Ex: 60, 90, 120
+  price           Float    // Ex: 85.90
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relações
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  appointments   Appointment[]
+
+  @@map("services")
+}
+
+// ============================================
+// DISPONIBILIDADE SEMANAL
+// ============================================
+
+model Availability {
+  id             String    @id @default(cuid())
+  dayOfWeek      Int       // 0=Domingo, 1=Segunda, ..., 6=Sábado
+  startTime      String    // "08:00"
+  endTime        String    // "18:00"
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relações
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@unique([professionalId, dayOfWeek])
+  @@map("availabilities")
+}
+
+// ============================================
+// CLIENTES
+// ============================================
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String   // WhatsApp/Telefone
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relações
+  appointments Appointment[]
+
+  @@map("customers")
+}
+
+// ============================================
+// AGENDAMENTOS
+// ============================================
+
+model Appointment {
+  id             String            @id @default(cuid())
+  date           DateTime          // Data/hora de início do agendamento
+  status         AppointmentStatus @default(PENDING)
+  notes          String?           @db.Text // Observações do cliente/profissional
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  // Relações
+  professionalId String
+  professional   Professional     @relation(fields: [professionalId], references: [id])
+
+  serviceId      String
+  service        Service          @relation(fields: [serviceId], references: [id])
+
+  customerId     String?
+  customer       Customer?        @relation(fields: [customerId], references: [id])
+
+  // Índices para performance
+  @@index([professionalId, date])
+  @@index([status, date])
+  @@map("appointments")
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}

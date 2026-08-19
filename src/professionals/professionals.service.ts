@@ -1,63 +1,100 @@
-// src/professionals/professionals.service.ts
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateProfessionalDto } from './dto/create-professional.dto';
 
 @Injectable()
 export class ProfessionalsService {
-  private professionals = [
-    {
-      id: 'nann1naf',
-      slug: 'jessicasantana', // 💡 O link amigável que ela vai enviar para os clientes
-      name: 'Jessica Santana',
-      bio: 'Especialista em Alongamento em Gel e Nail Art.',
-      avatarUrl: 'https://images.unsplash.com/photo-1594744803329-e58b31de215f',
-      socialMedia: {
-        instagram: 'https://instagram.com/studiojessicasantanaa',
-      },
-    },
-  ];
+  constructor(private readonly prisma: PrismaService) {}
 
-  create(dto: CreateProfessionalDto) {
-    const slugExists = this.professionals.some((p) => p.slug === dto.slug);
-    if (slugExists) {
-      throw new ConflictException(
-        'Este link personalizado já está em uso por outra profissional.',
-      );
+  async create(dto: CreateProfessionalDto) {
+    const existing = await this.prisma.professional.findUnique({
+      where: { slug: dto.slug },
+    });
+    if (existing) {
+      throw new ConflictException('Este link personalizado já está em uso por outra profissional.');
     }
 
-    const newProfessional = {
-      id: Math.random().toString(36).substring(2, 12),
-      ...dto,
-    };
-    this.professionals.push(newProfessional);
-    return newProfessional;
+    return this.prisma.professional.create({
+      data: {
+        name: dto.name,
+        slug: dto.slug,
+        bio: dto.bio,
+        avatarUrl: dto.avatarUrl,
+        instagram: dto.socialMedia?.instagram,
+        facebook: dto.socialMedia?.facebook,
+      },
+    });
   }
 
-  findAll() {
-    return this.professionals;
+  async findAll() {
+    return this.prisma.professional.findMany({
+      include: {
+        services: { where: { isActive: true } },
+        availabilities: { where: { isActive: true } },
+      },
+    });
   }
 
-  // 💡 Busca interna/administrativa (Pelo ID em formato String)
-  findOneById(id: string) {
-    const professional = this.professionals.find((p) => p.id === id);
+  async findOneById(id: string) {
+    const professional = await this.prisma.professional.findUnique({
+      where: { id },
+      include: {
+        services: { where: { isActive: true } },
+        availabilities: { where: { isActive: true } },
+        user: true,
+      },
+    });
     if (!professional) {
       throw new NotFoundException(`Profissional com ID ${id} não encontrada.`);
     }
     return professional;
   }
 
-  // 💡 Busca pública para os clientes (Pelo Slug do link)
-  findOneBySlug(slug: string) {
-    const professional = this.professionals.find((p) => p.slug === slug);
+  async findOneBySlug(slug: string) {
+    const professional = await this.prisma.professional.findUnique({
+      where: { slug },
+      include: {
+        services: { where: { isActive: true }, orderBy: { name: 'asc' } },
+        availabilities: { where: { isActive: true }, orderBy: { dayOfWeek: 'asc' } },
+      },
+    });
     if (!professional) {
-      throw new NotFoundException(
-        `A página da profissional "${slug}" não foi encontrada.`,
-      );
+      throw new NotFoundException(`A página da profissional "${slug}" não foi encontrada.`);
     }
     return professional;
+  }
+
+  async update(id: string, dto: Partial<CreateProfessionalDto>) {
+    const existing = await this.prisma.professional.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Profissional com ID ${id} não encontrada.`);
+    }
+
+    if (dto.slug && dto.slug !== existing.slug) {
+      const slugExists = await this.prisma.professional.findUnique({ where: { slug: dto.slug } });
+      if (slugExists) {
+        throw new ConflictException('Este link personalizado já está em uso.');
+      }
+    }
+
+    return this.prisma.professional.update({
+      where: { id },
+      data: {
+        name: dto.name,
+        slug: dto.slug,
+        bio: dto.bio,
+        avatarUrl: dto.avatarUrl,
+        instagram: dto.socialMedia?.instagram,
+        facebook: dto.socialMedia?.facebook,
+      },
+    });
+  }
+
+  async remove(id: string) {
+    const existing = await this.prisma.professional.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Profissional com ID ${id} não encontrada.`);
+    }
+    return this.prisma.professional.delete({ where: { id } });
   }
 }

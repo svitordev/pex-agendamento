@@ -1,23 +1,21 @@
+import { Controller, Post, Get, Body, Query } from '@nestjs/common';
 import { AppointmentsService } from './appointments.service';
-import { Body, Controller, Post, Query } from '@nestjs/common';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 
 @Controller('appointments')
 export class AppointmentsController {
-constructor(private readonly AppointmentsService: AppointmentsService) {}
+  constructor(private readonly appointmentsService: AppointmentsService) {}
 
-@Post() // Rota para criar o agendamento
-create(@Body() CreateAppointmentDto: CreateAppointmentDto) {
-    return this.AppointmentsService.create(CreateAppointmentDto);
-}
+  @Post()
+  create(@Body() createAppointmentDto: CreateAppointmentDto) {
+    return this.appointmentsService.create(createAppointmentDto);
+  }
 
-@Get('available')
-//Rota para o front-end buscar os horários livres.
-// Exemplo de chamada:  GET /appointments/available?date=2026-07-10&professionalId=1
-getAvailableSlots(
+  @Get('available')
+  getAvailableSlots(
     @Query('date') date: string,
     @Query('professionalId') professionalId: string
-){
-    return this.AppointmentsService.findAvailableSlots(date, +professionalId);
-}
+  ) {
+    return this.appointmentsService.findAvailableSlots(date, professionalId);
+  }
 }
