@@ -1,0 +1,77 @@
+export interface User {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: 'ADMIN' | 'PROFESSIONAL' | 'CUSTOMER';
+  professional?: Professional;
+}
+
+export interface Professional {
+  id: string;
+  slug: string;
+  name: string;
+  bio: string;
+  avatarUrl: string | null;
+  instagram: string;
+  themeColors: {
+    primary: string;
+    secondary: string;
+    accent: string;
+  };
+}
+
+export interface Service {
+  id: string;
+  name: string;
+  description: string;
+  durationMinutes: number;
+  price: number;
+  isActive: boolean;
+  professionalId: string;
+}
+
+export interface AppointmentStatus {
+  value: string;
+  label: string;
+  color: string;
+}
+
+export interface Appointment {
+  id: string;
+  date: string;
+  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+  notes: string | null;
+  professionalId: string;
+  serviceId: string;
+  customerId: string;
+  professional?: Professional;
+  service?: Service;
+  customer?: Customer;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+}
+
+export interface Availability {
+  id: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
+  professionalId: string;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  user: User;
+}
