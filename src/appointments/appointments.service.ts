@@ -30,7 +30,12 @@ export class AppointmentsService {
 
     const dayOfWeek = appointmentDate.getDay();
     const availability = await this.prisma.availability.findUnique({
-      where: { professionalId_dayOfWeek: { professionalId: dto.professionalId, dayOfWeek } },
+      where: {
+        professionalId_dayOfWeek: {
+          professionalId: dto.professionalId,
+          dayOfWeek,
+        },
+      },
     });
     if (!availability || !availability.isActive) {
       throw new BadRequestException('A profissional não atende neste dia da semana.');
@@ -87,7 +92,7 @@ export class AppointmentsService {
         serviceId: dto.serviceId,
         customerId: customer.id,
         date: appointmentDate,
-        status: 'PENDING' as AppointmentStatus,
+        status: 'PENDING',
       },
       include: { professional: true, service: true, customer: true },
     });
@@ -98,7 +103,9 @@ export class AppointmentsService {
     const dayOfWeek = targetDate.getDay();
 
     const availability = await this.prisma.availability.findUnique({
-      where: { professionalId_dayOfWeek: { professionalId, dayOfWeek } },
+      where: {
+        professionalId_dayOfWeek: { professionalId, dayOfWeek },
+      },
     });
     if (!availability || !availability.isActive) {
       return { available: false, slots: [], message: 'Profissional não atende neste dia.' };
@@ -108,9 +115,8 @@ export class AppointmentsService {
       where: { professionalId, isActive: true },
       select: { durationMinutes: true },
     });
-    const intervalMinutes = services.length > 0
-      ? Math.min(...services.map((s) => s.durationMinutes))
-      : 60;
+    const intervalMinutes =
+      services.length > 0 ? Math.min(...services.map((s) => s.durationMinutes)) : 60;
 
     const [startH, startM] = availability.startTime.split(':').map(Number);
     const [endH, endM] = availability.endTime.split(':').map(Number);
@@ -119,12 +125,15 @@ export class AppointmentsService {
       where: {
         professionalId,
         status: { notIn: ['CANCELLED', 'NO_SHOW'] },
-        date: { gte: new Date(`${dateString}T00:00:00`), lt: new Date(`${dateString}T23:59:59`) },
+        date: {
+          gte: new Date(`${dateString}T00:00:00`),
+          lt: new Date(`${dateString}T23:59:59`),
+        },
       },
       include: { service: true },
     });
 
-    const slots: Array<{ time: string; available: boolean }> = [];
+    const slots: any[] = [];
     let current = new Date(targetDate);
     current.setHours(startH, startM, 0, 0);
     const workEnd = new Date(targetDate);
@@ -133,7 +142,9 @@ export class AppointmentsService {
     while (current < workEnd) {
       const slotEnd = new Date(current.getTime() + intervalMinutes * 60000);
       const isBooked = bookedSlots.some((booked) => {
-        const bookedEnd = new Date(booked.date.getTime() + booked.service.durationMinutes * 60000);
+        const bookedEnd = new Date(
+          booked.date.getTime() + booked.service.durationMinutes * 60000,
+        );
         return current < bookedEnd && slotEnd > booked.date;
       });
       slots.push({ time: current.toTimeString().substring(0, 5), available: !isBooked });
@@ -143,7 +154,7 @@ export class AppointmentsService {
     return { available: true, slots };
   }
 
-  findAll() {
+  async findAll() {
     return this.prisma.appointment.findMany({
       include: { professional: true, service: true, customer: true },
     });
@@ -156,6 +167,45 @@ export class AppointmentsService {
     });
     if (!appointment) throw new NotFoundException(`Agendamento ${id} não encontrado.`);
     return appointment;
+  }
+
+  async findByProfessional(professionalId: string, date?: string) {
+    const where: any = { professionalId };
+    if (date) {
+      const target = new Date(date);
+      where.date = {
+        gte: new Date(target.setHours(0, 0, 0, 0)),
+        lt: new Date(target.setHours(23, 59, 59, 999)),
+      };
+    }
+    return this.prisma.appointment.findMany({
+      where,
+      include: { professional: true, service: true, customer: true },
+      orderBy: { date: 'asc' },
+    });
+  }
+
+  async findByPhone(phone: string) {
+    // Normalizar telefone (remover caracteres não-numéricos)
+    const normalizedPhone = phone.replace(/\D/g, '');
+    
+    const customer = await this.prisma.customer.findFirst({
+      where: {
+        phone: {
+          startsWith: normalizedPhone.substring(normalizedPhone.length - 10),
+        },
+      },
+    });
+
+    if (!customer) {
+      throw new NotFoundException(`Nenhum agendamento encontrado para este telefone.`);
+    }
+
+    return this.prisma.appointment.findMany({
+      where: { customerId: customer.id },
+      include: { professional: true, service: true, customer: true },
+      orderBy: { date: 'desc' },
+    });
   }
 
   async updateStatus(id: string, status: string) {

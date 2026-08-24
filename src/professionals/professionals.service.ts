@@ -90,6 +90,45 @@ export class ProfessionalsService {
     });
   }
 
+  async updateProfile(
+    id: string,
+    dto: {
+      name?: string;
+      bio?: string;
+      avatarUrl?: string;
+      instagram?: string;
+      facebook?: string;
+      themeColors?: Record<string, string>;
+    },
+  ) {
+    const existing = await this.prisma.professional.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Profissional com ID ${id} não encontrada.`);
+    }
+
+    // themeColors precisa ser JSON válido
+    let themeColors = dto.themeColors;
+    if (themeColors && typeof themeColors === 'string') {
+      try {
+        themeColors = JSON.parse(themeColors);
+      } catch {
+        themeColors = undefined;
+      }
+    }
+
+    return this.prisma.professional.update({
+      where: { id },
+      data: {
+        name: dto.name,
+        bio: dto.bio,
+        avatarUrl: dto.avatarUrl,
+        instagram: dto.instagram,
+        facebook: dto.facebook,
+        ...(themeColors && { themeColors }),
+      },
+    });
+  }
+
   async remove(id: string) {
     const existing = await this.prisma.professional.findUnique({ where: { id } });
     if (!existing) {
