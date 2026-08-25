@@ -1,7 +1,19 @@
-import { Controller, Get, Post, Patch, Body, Query, Param, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Query,
+  Param,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto';
+import { CancelPublicAppointmentDto } from './dto/cancel-public-appointment.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
 @Controller('appointments')
@@ -13,13 +25,27 @@ export class AppointmentsController {
     return this.appointmentsService.create(dto);
   }
 
+  // Protegido: DELETE /appointments/cleanup
+  @UseGuards(JwtAuthGuard)
+  @Delete('cleanup')
+  cleanup(@Req() req: any) {
+    const professionalId = req.user?.professionalId;
+
+    return this.appointmentsService.cleanup(professionalId);
+  }
+
   // Publico: GET /appointments/available?date=2026-08-22&professionalId=xxx
   @Get('available')
   getAvailableSlots(
     @Query('date') date: string,
     @Query('professionalId') professionalId: string,
+    @Query('serviceId') serviceId: string,
   ) {
-    return this.appointmentsService.findAvailableSlots(date, professionalId);
+    return this.appointmentsService.findAvailableSlots(
+      date,
+      professionalId,
+      serviceId,
+    );
   }
 
   // Publico: GET /appointments/by-phone?phone=55999999999
@@ -44,5 +70,14 @@ export class AppointmentsController {
     @Body() dto: UpdateAppointmentStatusDto,
   ) {
     return this.appointmentsService.updateStatus(id, dto.status);
+  }
+
+  @Patch(':id/cancel-public')
+  cancelPublic(
+    @Param('id') id: string,
+    @Body()
+    dto: CancelPublicAppointmentDto,
+  ) {
+    return this.appointmentsService.cancelPublic(id, dto.phone);
   }
 }
