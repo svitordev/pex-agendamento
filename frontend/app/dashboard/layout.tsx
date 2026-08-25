@@ -34,8 +34,8 @@ function SidebarContent() {
       <nav className="flex-1 p-4 space-y-1">
         <NavLink href="/dashboard" icon={LayoutDashboard}>Agendamentos</NavLink>
         <NavLink href="/dashboard/services" icon={Sparkles}>Serviços</NavLink>
-        <NavLink href="/dashboard/availability" icon={Clock}>Disponibilidade</NavLink>
-        <NavLink href="/dashboard/profile" icon={User}>Perfil</NavLink>
+         <NavLink href="/dashboard/availability" icon={Clock}>Disponibilidade</NavLink>
+         <NavLink href="/dashboard/profile" icon={User}>Meu Perfil</NavLink>
       </nav>
       <div className="p-4 border-t border-gray-200">
         <Button variant="outline" className="w-full justify-start text-red-600 hover:text-red-700" onClick={logout}>

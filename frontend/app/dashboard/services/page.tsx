@@ -1,193 +1,573 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { Edit2, Plus, Trash2 } from 'lucide-react';
+
 import api from '@/lib/api';
 import type { Service } from '@/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/hooks/useAuth';
+
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
+
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useForm } from 'react-hook-form';
-import { Trash2, Plus, Edit2 } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
+
+type ServiceFormData = {
+  name: string;
+  description: string;
+  durationMinutes: number;
+  price: number;
+};
+
+const DEFAULT_FORM_VALUES: ServiceFormData = {
+  name: '',
+  description: '',
+  durationMinutes: 30,
+  price: 0,
+};
 
 export default function ServicesPage() {
   const { user } = useAuth();
+
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [editingService, setEditingService] = useState<Service | null>(null);
 
-  const { register, handleSubmit, reset, setValue } = useForm<{
-    name: string;
-    description: string;
-    durationMinutes: number;
-    price: number;
-    professionalId: string;
-  }>({
-    defaultValues: {
-      name: '',
-      description: '',
-      durationMinutes: 30,
-      price: 0,
-      professionalId: user?.professional?.id || '',
-    }
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [editingService, setEditingService] =
+    useState<Service | null>(null);
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<ServiceFormData>({
+    defaultValues: DEFAULT_FORM_VALUES,
   });
 
-  useEffect(() => {
-    fetchServices();
-  }, [user]);
-
-  const fetchServices = async () => {
+  /*
+   * Busca os serviços do profissional.
+   * O backend já identifica/filtra o profissional através da autenticação.
+   */
+  const fetchServices = useCallback(async () => {
     try {
-      const res = await api.get('/services');
-      setServices(res.data);
+      const response = await api.get<Service[]>('/services');
+
+      setServices(response.data ?? []);
     } catch (err) {
       console.error('Erro ao buscar serviços:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
+  useEffect(() => {
+    fetchServices();
+  }, [fetchServices, user]);
+
+  /*
+   * Abre o formulário para criar ou editar.
+   */
   const handleOpenModal = (service: Service | null = null) => {
     if (service) {
       setEditingService(service);
-      setValue('name', service.name);
-      setValue('description', service.description);
-      setValue('durationMinutes', service.durationMinutes);
-      setValue('price', service.price);
+
+      reset({
+        name: service.name,
+        description: service.description ?? '',
+        durationMinutes: service.durationMinutes,
+        price: Number(service.price),
+      });
     } else {
       setEditingService(null);
-      reset({ 
-        name: '', 
-        description: '', 
-        durationMinutes: 30, 
-        price: 0,
-        professionalId: user?.professional?.id || ''
-      });
+      reset(DEFAULT_FORM_VALUES);
     }
+
     setIsSheetOpen(true);
   };
 
-  const onSubmit = async (data: any) => {
+  /*
+   * Fecha o formulário.
+   */
+  const handleCloseModal = () => {
+    setIsSheetOpen(false);
+    setEditingService(null);
+    reset(DEFAULT_FORM_VALUES);
+  };
+
+  /*
+   * Cria ou atualiza um serviço.
+   */
+  const onSubmit = async (data: ServiceFormData) => {
+    if (isSaving) return;
+
+    setIsSaving(true);
+
     try {
       if (editingService) {
-        await api.patch(`/services/${editingService.id}`, data);
+        /*
+         * EDIÇÃO
+         *
+         * Não enviamos professionalId no PATCH.
+         */
+        await api.patch(
+          `/services/${editingService.id}`,
+          data,
+        );
       } else {
-        await api.post('/services', data);
+        /*
+         * CRIAÇÃO
+         *
+         * Seu backend atual exige professionalId no CreateServiceDto.
+         */
+        const professionalId = user?.professional?.id;
+
+        if (!professionalId) {
+          alert(
+            'Não foi possível identificar o profissional logado.',
+          );
+
+          return;
+        }
+
+        await api.post('/services', {
+          ...data,
+          professionalId,
+        });
       }
-      fetchServices();
-      setIsSheetOpen(false);
+
+      await fetchServices();
+
+      handleCloseModal();
     } catch (err) {
-      alert('Erro ao salvar serviço');
+      console.error('Erro ao salvar serviço:', err);
+
+      alert(
+        editingService
+          ? 'Erro ao editar serviço.'
+          : 'Erro ao criar serviço.',
+      );
+    } finally {
+      setIsSaving(false);
     }
   };
 
+  /*
+   * Exclui um serviço.
+   */
   const handleDelete = async (id: string) => {
-    if (!confirm('Deseja realmente excluir este serviço?')) return;
+    const confirmed = window.confirm(
+      'Deseja realmente excluir este serviço?',
+    );
+
+    if (!confirmed) return;
+
+    setDeletingId(id);
+
     try {
       await api.delete(`/services/${id}`);
-      fetchServices();
+
+      /*
+       * Remove imediatamente da tela sem precisar
+       * fazer outra consulta ao backend.
+       */
+      setServices((currentServices) =>
+        currentServices.filter(
+          (service) => service.id !== id,
+        ),
+      );
     } catch (err) {
-      alert('Erro ao excluir serviço');
+      console.error('Erro ao excluir serviço:', err);
+
+      alert('Erro ao excluir serviço.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
-  const toggleActive = async (id: string, current: boolean) => {
-    await api.patch(`/services/${id}`, { isActive: !current });
-    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, isActive: !current } : s)));
+  /*
+   * Ativa ou desativa um serviço.
+   */
+  const toggleActive = async (
+    id: string,
+    currentStatus: boolean,
+  ) => {
+    if (togglingId === id) return;
+
+    setTogglingId(id);
+
+    const newStatus = !currentStatus;
+
+    try {
+      await api.patch(`/services/${id}`, {
+        isActive: newStatus,
+      });
+
+      /*
+       * Atualização local.
+       * Evita GET desnecessário depois do PATCH.
+       */
+      setServices((currentServices) =>
+        currentServices.map((service) =>
+          service.id === id
+            ? {
+                ...service,
+                isActive: newStatus,
+              }
+            : service,
+        ),
+      );
+    } catch (err) {
+      console.error(
+        'Erro ao alterar status do serviço:',
+        err,
+      );
+
+      alert('Erro ao alterar status do serviço.');
+    } finally {
+      setTogglingId(null);
+    }
   };
 
+  /*
+   * Loading inicial.
+   */
   if (loading) {
     return (
       <div className="flex justify-center p-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
+      {/* Cabeçalho */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Meus Serviços</h2>
-        <Button onClick={() => handleOpenModal()} className="cursor-pointer hover:bg-blue-700 transition-colors">
-          <Plus className="w-4 h-4 mr-2" /> Novo Serviço
+        <h2 className="text-2xl font-bold text-gray-900">
+          Meus Serviços
+        </h2>
+
+        <Button
+          type="button"
+          onClick={() => handleOpenModal()}
+          className="cursor-pointer transition-colors hover:bg-blue-700"
+        >
+          <Plus className="mr-2 h-4 w-4" />
+
+          Novo Serviço
         </Button>
       </div>
 
-      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-        <SheetContent className="sm:max-w-[425px] overflow-y-auto p-6">
+      {/* Formulário lateral */}
+      <Sheet
+        open={isSheetOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCloseModal();
+          } else {
+            setIsSheetOpen(true);
+          }
+        }}
+      >
+        <SheetContent className="overflow-y-auto p-6 sm:max-w-[425px]">
           <SheetHeader className="mb-4">
-            <SheetTitle>{editingService ? 'Editar Serviço' : 'Novo Serviço'}</SheetTitle>
-          <SheetDescription>Preencha os detalhes do serviço.</SheetDescription>
+            <SheetTitle>
+              {editingService
+                ? 'Editar Serviço'
+                : 'Novo Serviço'}
+            </SheetTitle>
+
+            <SheetDescription>
+              {editingService
+                ? 'Altere os dados do serviço selecionado.'
+                : 'Preencha os dados para cadastrar um novo serviço.'}
+            </SheetDescription>
           </SheetHeader>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="space-y-4"
+          >
+            {/* Nome */}
             <div className="space-y-2">
-              <Label htmlFor="name">Nome</Label>
-              <Input id="name" {...register('name', { required: true })} />
+              <Label htmlFor="name">
+                Nome
+              </Label>
+
+              <Input
+                id="name"
+                placeholder="Ex.: Corte de cabelo"
+                disabled={isSaving}
+                {...register('name', {
+                  required: 'Informe o nome do serviço.',
+                  minLength: {
+                    value: 2,
+                    message:
+                      'O nome deve possuir pelo menos 2 caracteres.',
+                  },
+                })}
+              />
+
+              {errors.name && (
+                <p className="text-sm text-red-600">
+                  {errors.name.message}
+                </p>
+              )}
             </div>
+
+            {/* Descrição */}
             <div className="space-y-2">
-              <Label htmlFor="description">Descrição</Label>
-              <Textarea id="description" {...register('description')} />
+              <Label htmlFor="description">
+                Descrição
+              </Label>
+
+              <Textarea
+                id="description"
+                placeholder="Descreva brevemente o serviço..."
+                disabled={isSaving}
+                {...register('description')}
+              />
             </div>
+
+            {/* Duração + preço */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="durationMinutes">Duração (min)</Label>
-                <Input id="durationMinutes" type="number" {...register('durationMinutes', { valueAsNumber: true })} />
+                <Label htmlFor="durationMinutes">
+                  Duração (min)
+                </Label>
+
+                <Input
+                  id="durationMinutes"
+                  type="number"
+                  min={1}
+                  step={1}
+                  disabled={isSaving}
+                  {...register('durationMinutes', {
+                    valueAsNumber: true,
+                    required:
+                      'Informe a duração do serviço.',
+                    min: {
+                      value: 1,
+                      message:
+                        'A duração deve ser maior que zero.',
+                    },
+                  })}
+                />
+
+                {errors.durationMinutes && (
+                  <p className="text-sm text-red-600">
+                    {errors.durationMinutes.message}
+                  </p>
+                )}
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="price">Preço (R$)</Label>
-                <Input id="price" type="number" step="0.01" {...register('price', { valueAsNumber: true })} />
+                <Label htmlFor="price">
+                  Preço (R$)
+                </Label>
+
+                <Input
+                  id="price"
+                  type="number"
+                  min={0.01}
+                  step="0.01"
+                  disabled={isSaving}
+                  {...register('price', {
+                    valueAsNumber: true,
+                    required:
+                      'Informe o preço do serviço.',
+                    min: {
+                      value: 0.01,
+                      message:
+                        'O preço deve ser maior que zero.',
+                    },
+                  })}
+                />
+
+                {errors.price && (
+                  <p className="text-sm text-red-600">
+                    {errors.price.message}
+                  </p>
+                )}
               </div>
             </div>
+
+            {/* Botões */}
             <SheetFooter className="pt-4">
-              <Button type="submit">Salvar</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCloseModal}
+                disabled={isSaving}
+              >
+                Cancelar
+              </Button>
+
+              <Button
+                type="submit"
+                disabled={isSaving}
+              >
+                {isSaving
+                  ? 'Salvando...'
+                  : editingService
+                    ? 'Salvar alterações'
+                    : 'Cadastrar serviço'}
+              </Button>
             </SheetFooter>
           </form>
         </SheetContent>
       </Sheet>
 
-      <div className="space-y-4">
-        {services.map((service) => (
-          <Card key={service.id}>
-            <CardHeader className="pb-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="text-lg">{service.name}</CardTitle>
-                  <p className="text-sm text-gray-500 mt-1">{service.description}</p>
-                </div>
-                <button
-                  onClick={() => toggleActive(service.id, service.isActive)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 transition ${
-                    service.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
-                  }`}
-                >
-                  {service.isActive ? 'Ativo' : 'Inativo'}
-                </button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex justify-between items-center">
-                <div className="flex gap-3 text-sm text-gray-600">
-                  <span>⏱ {service.durationMinutes} min</span>
-                  <span className="font-semibold text-blue-600">R${service.price.toFixed(2)}</span>
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => handleOpenModal(service)} className="cursor-pointer hover:bg-gray-100 transition-colors">
-                    <Edit2 className="w-4 h-4" />
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={() => handleDelete(service.id)} className="cursor-pointer hover:bg-red-700 transition-colors">
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* Lista */}
+      {services.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <p className="font-medium text-gray-700">
+              Nenhum serviço cadastrado
+            </p>
+
+            <p className="mt-1 text-sm text-gray-500">
+              Cadastre seu primeiro serviço para começar.
+            </p>
+
+            <Button
+              type="button"
+              className="mt-4"
+              onClick={() => handleOpenModal()}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+
+              Novo Serviço
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {services.map((service) => {
+            const isDeleting =
+              deletingId === service.id;
+
+            const isToggling =
+              togglingId === service.id;
+
+            return (
+              <Card key={service.id}>
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <CardTitle className="text-lg">
+                        {service.name}
+                      </CardTitle>
+
+                      {service.description && (
+                        <p className="mt-1 text-sm text-gray-500">
+                          {service.description}
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isToggling}
+                      onClick={() =>
+                        toggleActive(
+                          service.id,
+                          service.isActive,
+                        )
+                      }
+                      className={`shrink-0 cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 ${
+                        service.isActive
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-gray-200 text-gray-600'
+                      }`}
+                    >
+                      {isToggling
+                        ? 'Alterando...'
+                        : service.isActive
+                          ? 'Ativo'
+                          : 'Inativo'}
+                    </button>
+                  </div>
+                </CardHeader>
+
+                <CardContent>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex flex-wrap gap-3 text-sm text-gray-600">
+                      <span>
+                        ⏱ {service.durationMinutes} min
+                      </span>
+
+                      <span className="font-semibold text-blue-600">
+                        {Number(
+                          service.price,
+                        ).toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </span>
+                    </div>
+
+                    <div className="flex gap-2">
+                      {/* Editar */}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={isDeleting}
+                        onClick={() =>
+                          handleOpenModal(service)
+                        }
+                        className="cursor-pointer transition-colors hover:bg-gray-100"
+                        aria-label={`Editar ${service.name}`}
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+
+                      {/* Excluir */}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        disabled={isDeleting}
+                        onClick={() =>
+                          handleDelete(service.id)
+                        }
+                        className="cursor-pointer transition-colors hover:bg-red-700"
+                        aria-label={`Excluir ${service.name}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

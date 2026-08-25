@@ -173,7 +173,7 @@ export default function AvailabilityPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {DAYS_CONFIG.map((dia) => {
-          const avail = availabilities[dia.id];
+                  const avail = availabilities[dia.id];
           return (
             <Card key={dia.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">
@@ -184,9 +184,12 @@ export default function AvailabilityPage() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">🕐 {avail.startTime} - {avail.endTime}</span>
-                      <Badge variant={avail.isActive ? 'default' : 'secondary'}>
-                        {avail.isActive ? 'Ativo' : 'Inativo'}
-                      </Badge>
+                   <button
+                      onClick={() => toggleActive(avail.dayOfWeek)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 transition ${avail.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}
+                    >
+                      {avail.isActive ? 'Ativo' : 'Inativo'}
+                    </button>
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => handleOpenModal(dia.id, avail)} className="cursor-pointer hover:bg-gray-100 transition-colors">
