@@ -47,14 +47,15 @@ model Professional {
   themeColors Json? // {"primary": "#FF69B4", "secondary": "#333"} - Customização visual SaaS
   instagram   String?
   facebook    String?
+  whatsapp    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relações
-  user           User?
-  services       Service[]
-  appointments   Appointment[]
-  availabilities Availability[]
+  user                   User?
+  services               Service[]
+  appointments           Appointment[]
+  availabilities         Availability[]
   availabilityExceptions AvailabilityException[]
 
   @@map("professionals")
@@ -126,16 +127,16 @@ model AvailabilityPeriod {
 
 // EXCEÇÃO/ BLOQUEIO DE DATA – PARA PÁGINA DO ADMINISTRADOR E RENDERIZAÇÃO
 model AvailabilityException {
-  id                String      @id @default(cuid())
-  professionalId    String
-  professional      Professional @relation(fields: [professionalId], references: [id])
-  date              DateTime     // Data específica (sem hora)
-  allDay            Boolean      @default(false) // bloco completo do dia
-  startTime         String?      // se não for allDay, começa neste horário
-  endTime           String?      // termina neste horário
-  reason            String?      // descrição opcional (ex.: "Consulta médica")
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  id             String       @id @default(cuid())
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id])
+  date           DateTime // Data específica (sem hora)
+  allDay         Boolean      @default(false) // bloco completo do dia
+  startTime      String? // se não for allDay, começa neste horário
+  endTime        String? // termina neste horário
+  reason         String? // descrição opcional (ex.: "Consulta médica")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@unique([professionalId, date, startTime, endTime])
   @@map("availability_exceptions")
@@ -164,12 +165,15 @@ model Customer {
 // ============================================
 
 model Appointment {
-  id        String            @id @default(cuid())
-  date      DateTime // Data/hora de início do agendamento
-  status    AppointmentStatus @default(PENDING)
-  notes     String?           @db.Text // Observações do cliente/profissional
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  id                 String                  @id @default(cuid())
+  date               DateTime // Data/hora de início do agendamento
+  status             AppointmentStatus       @default(PENDING)
+  notes              String?                 @db.Text // Observações do cliente/profissional
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  cancellationReason String?                 @db.Text
+  cancelledBy        AppointmentCancelledBy?
+  cancelledAt        DateTime?
 
   // Relações
   professionalId String
@@ -193,4 +197,9 @@ enum AppointmentStatus {
   CANCELLED
   COMPLETED
   NO_SHOW
+}
+
+enum AppointmentCancelledBy {
+  PROFESSIONAL
+  CUSTOMER
 }

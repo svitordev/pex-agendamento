@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-import { AppointmentStatus } from '@prisma/client';
+import { AppointmentCancelledBy, AppointmentStatus } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
@@ -15,10 +15,24 @@ export class AppointmentsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /*
-   * ==========================================================
+   * ============================================================
    * HELPERS
-   * ==========================================================
+   * ============================================================
    */
+
+  private normalizePhone(value: string) {
+    return value.replace(/\D/g, '');
+  }
+
+  private getLocalPhone(value: string) {
+    const digits = this.normalizePhone(value);
+
+    if (digits.startsWith('55') && digits.length > 11) {
+      return digits.substring(2);
+    }
+
+    return digits;
+  }
 
   private getDayBounds(date: Date) {
     const start = new Date(date);
@@ -136,9 +150,9 @@ export class AppointmentsService {
   }
 
   /*
-   * ==========================================================
-   * CREATE
-   * ==========================================================
+   * ============================================================
+   * CRIAR AGENDAMENTO
+   * ============================================================
    */
 
   async create(dto: CreateAppointmentDto) {
@@ -176,7 +190,7 @@ export class AppointmentsService {
       throw new NotFoundException('Serviço não encontrado ou indisponível.');
     }
 
-    const endTime = new Date(
+    const appointmentEnd = new Date(
       appointmentDate.getTime() + service.durationMinutes * 60 * 1000,
     );
 
@@ -192,19 +206,13 @@ export class AppointmentsService {
     }
 
     /*
-     * O serviço precisa caber completamente
+     * Precisa caber completamente
      * dentro de UM período.
-     *
-     * Exemplo:
-     * 08:00-11:00
-     * 13:00-18:00
-     *
-     * 10:30 + 60 min é inválido.
      */
     if (
       !this.fitsInsidePeriod(
         appointmentDate,
-        endTime,
+        appointmentEnd,
         appointmentDate,
         availability.periods,
       )
@@ -214,20 +222,19 @@ export class AppointmentsService {
       );
     }
 
-    /*
-     * Bloqueios específicos da data.
-     */
     if (
-      this.hitsException(appointmentDate, endTime, appointmentDate, exceptions)
+      this.hitsException(
+        appointmentDate,
+        appointmentEnd,
+        appointmentDate,
+        exceptions,
+      )
     ) {
       throw new ConflictException(
         'Este horário está bloqueado pelo profissional.',
       );
     }
 
-    /*
-     * Outros appointments.
-     */
     const existingAppointments = await this.prisma.appointment.findMany({
       where: {
         professionalId: dto.professionalId,
@@ -247,24 +254,28 @@ export class AppointmentsService {
       },
     });
 
-    const conflict = existingAppointments.some((existing) => {
+    const hasConflict = existingAppointments.some((existing) => {
       const existingEnd = new Date(
         existing.date.getTime() + existing.service.durationMinutes * 60 * 1000,
       );
 
       return this.intervalsOverlap(
         appointmentDate,
-        endTime,
+        appointmentEnd,
         existing.date,
         existingEnd,
       );
     });
 
-    if (conflict) {
+    if (hasConflict) {
       throw new ConflictException('Este horário já está preenchido.');
     }
 
-    const normalizedPhone = dto.clientWhats.replace(/\D/g, '');
+    const normalizedPhone = this.normalizePhone(dto.clientWhats);
+
+    if (normalizedPhone.length < 10) {
+      throw new BadRequestException('WhatsApp inválido.');
+    }
 
     let customer = await this.prisma.customer.findFirst({
       where: {
@@ -304,9 +315,9 @@ export class AppointmentsService {
   }
 
   /*
-   * ==========================================================
-   * SLOTS DISPONÍVEIS
-   * ==========================================================
+   * ============================================================
+   * HORÁRIOS DISPONÍVEIS
+   * ============================================================
    */
 
   async findAvailableSlots(
@@ -353,9 +364,6 @@ export class AppointmentsService {
       };
     }
 
-    /*
-     * Dia inteiro bloqueado.
-     */
     if (exceptions.some((exception) => exception.allDay)) {
       return {
         available: false,
@@ -364,7 +372,7 @@ export class AppointmentsService {
       };
     }
 
-    const bookedAppointments = await this.prisma.appointment.findMany({
+    const appointments = await this.prisma.appointment.findMany({
       where: {
         professionalId,
 
@@ -390,10 +398,6 @@ export class AppointmentsService {
 
     const now = new Date();
 
-    /*
-     * Cada período é processado
-     * separadamente.
-     */
     for (const period of availability.periods) {
       let current = this.dateWithTime(targetDate, period.startTime);
 
@@ -404,24 +408,22 @@ export class AppointmentsService {
           current.getTime() + service.durationMinutes * 60 * 1000,
         );
 
-        /*
-         * Não pode ultrapassar o período.
-         */
         if (slotEnd > periodEnd) {
           break;
         }
 
         const isPast = current <= now;
 
-        const isBooked = bookedAppointments.some((booked) => {
+        const isBooked = appointments.some((appointment) => {
           const bookedEnd = new Date(
-            booked.date.getTime() + booked.service.durationMinutes * 60 * 1000,
+            appointment.date.getTime() +
+              appointment.service.durationMinutes * 60 * 1000,
           );
 
           return this.intervalsOverlap(
             current,
             slotEnd,
-            booked.date,
+            appointment.date,
             bookedEnd,
           );
         });
@@ -440,8 +442,9 @@ export class AppointmentsService {
         });
 
         /*
-         * Mantemos o comportamento atual:
-         * próximo slot = duração do serviço.
+         * Mantém o comportamento existente:
+         * intervalo entre opções =
+         * duração do serviço.
          */
         current = new Date(
           current.getTime() + service.durationMinutes * 60 * 1000,
@@ -465,9 +468,9 @@ export class AppointmentsService {
   }
 
   /*
-   * ==========================================================
+   * ============================================================
    * CONSULTAS
-   * ==========================================================
+   * ============================================================
    */
 
   async findAll() {
@@ -535,30 +538,30 @@ export class AppointmentsService {
     });
   }
 
-  async findByPhone(phone: string) {
-    const normalizedPhone = phone.replace(/\D/g, '');
+  async findByPhone(phone: string, professionalId?: string) {
+    const normalized = this.normalizePhone(phone);
 
-    if (normalizedPhone.length < 10) {
+    if (!normalized || normalized.length < 10) {
       throw new BadRequestException('Telefone inválido.');
     }
 
-    const localPhone =
-      normalizedPhone.startsWith('55') && normalizedPhone.length > 11
-        ? normalizedPhone.substring(2)
-        : normalizedPhone;
+    const localPhone = this.getLocalPhone(normalized);
 
-    const customer = await this.prisma.customer.findFirst({
+    const customers = await this.prisma.customer.findMany({
       where: {
         OR: [
           {
-            phone: normalizedPhone,
+            phone: normalized,
           },
+
           {
             phone: localPhone,
           },
+
           {
             phone: `55${localPhone}`,
           },
+
           {
             phone: {
               endsWith: localPhone,
@@ -566,17 +569,31 @@ export class AppointmentsService {
           },
         ],
       },
+
+      select: {
+        id: true,
+      },
     });
 
-    if (!customer) {
+    if (customers.length === 0) {
       throw new NotFoundException(
         'Nenhum cliente encontrado para este telefone.',
       );
     }
 
+    const customerIds = customers.map((customer) => customer.id);
+
     return this.prisma.appointment.findMany({
       where: {
-        customerId: customer.id,
+        customerId: {
+          in: customerIds,
+        },
+
+        ...(professionalId
+          ? {
+              professionalId,
+            }
+          : {}),
       },
 
       include: {
@@ -592,16 +609,19 @@ export class AppointmentsService {
   }
 
   /*
-   * ==========================================================
-   * STATUS
-   * ==========================================================
+   * ============================================================
+   * STATUS PELO PROFISSIONAL
+   * ============================================================
    */
 
-  async updateStatus(id: string, status: string, professionalId: string) {
-    const validStatuses = Object.values(AppointmentStatus);
-
-    if (!validStatuses.includes(status as AppointmentStatus)) {
-      throw new BadRequestException('Status inválido.');
+  async updateStatus(
+    id: string,
+    status: AppointmentStatus,
+    professionalId: string,
+    reason?: string,
+  ) {
+    if (!professionalId) {
+      throw new BadRequestException('Profissional não identificado.');
     }
 
     const appointment = await this.prisma.appointment.findFirst({
@@ -615,21 +635,77 @@ export class AppointmentsService {
       throw new NotFoundException('Agendamento não encontrado.');
     }
 
+    const allowedTransitions: Record<AppointmentStatus, AppointmentStatus[]> = {
+      PENDING: [AppointmentStatus.CONFIRMED, AppointmentStatus.CANCELLED],
+
+      CONFIRMED: [
+        AppointmentStatus.COMPLETED,
+        AppointmentStatus.CANCELLED,
+        AppointmentStatus.NO_SHOW,
+      ],
+
+      CANCELLED: [],
+      COMPLETED: [],
+      NO_SHOW: [],
+    };
+
+    if (!allowedTransitions[appointment.status].includes(status)) {
+      throw new BadRequestException(
+        'Esta alteração de status não é permitida.',
+      );
+    }
+
+    if (status === AppointmentStatus.CANCELLED) {
+      const cancellationReason = reason?.trim();
+
+      if (!cancellationReason) {
+        throw new BadRequestException('Informe o motivo do cancelamento.');
+      }
+
+      return this.prisma.appointment.update({
+        where: {
+          id,
+        },
+
+        data: {
+          status: AppointmentStatus.CANCELLED,
+
+          cancelledBy: AppointmentCancelledBy.PROFESSIONAL,
+
+          cancellationReason,
+
+          cancelledAt: new Date(),
+        },
+
+        include: {
+          professional: true,
+          service: true,
+          customer: true,
+        },
+      });
+    }
+
     return this.prisma.appointment.update({
       where: {
         id,
       },
 
       data: {
-        status: status as AppointmentStatus,
+        status,
+      },
+
+      include: {
+        professional: true,
+        service: true,
+        customer: true,
       },
     });
   }
 
   /*
-   * ==========================================================
+   * ============================================================
    * LIMPEZA
-   * ==========================================================
+   * ============================================================
    */
 
   async cleanup(professionalId: string) {
@@ -637,42 +713,39 @@ export class AppointmentsService {
       throw new BadRequestException('Profissional não identificado.');
     }
 
-    const now = new Date();
+    /*
+     * Só removemos estados finalizados.
+     *
+     * PENDING e CONFIRMED são preservados
+     * porque ainda exigem ação ou atendimento.
+     */
+    const removableStatuses: AppointmentStatus[] = [
+      AppointmentStatus.CANCELLED,
+      AppointmentStatus.COMPLETED,
+      AppointmentStatus.NO_SHOW,
+    ];
 
     const appointments = await this.prisma.appointment.findMany({
       where: {
         professionalId,
+
+        status: {
+          in: removableStatuses,
+        },
       },
 
-      include: {
-        service: {
-          select: {
-            durationMinutes: true,
-          },
-        },
+      select: {
+        id: true,
       },
     });
 
-    const ids = appointments
-      .filter((appointment) => {
-        if (appointment.status === AppointmentStatus.CANCELLED) {
-          return true;
-        }
-
-        const appointmentEnd = new Date(
-          appointment.date.getTime() +
-            appointment.service.durationMinutes * 60 * 1000,
-        );
-
-        return appointmentEnd <= now;
-      })
-      .map((appointment) => appointment.id);
+    const ids = appointments.map((appointment) => appointment.id);
 
     if (ids.length === 0) {
       return {
         count: 0,
         deletedIds: [],
-        message: 'Nenhum agendamento para limpar.',
+        message: 'Nenhum agendamento finalizado para remover.',
       };
     }
 
@@ -682,6 +755,13 @@ export class AppointmentsService {
 
         id: {
           in: ids,
+        },
+
+        /*
+         * Segurança extra.
+         */
+        status: {
+          in: removableStatuses,
         },
       },
     });
@@ -696,9 +776,9 @@ export class AppointmentsService {
   }
 
   /*
-   * ==========================================================
-   * CANCELAMENTO PÚBLICO
-   * ==========================================================
+   * ============================================================
+   * CANCELAMENTO PELO CLIENTE
+   * ============================================================
    */
 
   async cancelPublic(id: string, phone: string) {
@@ -716,19 +796,9 @@ export class AppointmentsService {
       throw new NotFoundException('Agendamento não encontrado.');
     }
 
-    const normalizePhone = (value: string) => {
-      const digits = value.replace(/\D/g, '');
+    const informedPhone = this.getLocalPhone(phone);
 
-      if (digits.startsWith('55') && digits.length >= 12) {
-        return digits.substring(2);
-      }
-
-      return digits;
-    };
-
-    const informedPhone = normalizePhone(phone);
-
-    const customerPhone = normalizePhone(appointment.customer.phone);
+    const customerPhone = this.getLocalPhone(appointment.customer.phone);
 
     if (informedPhone !== customerPhone) {
       throw new NotFoundException(
@@ -760,7 +830,57 @@ export class AppointmentsService {
 
       data: {
         status: AppointmentStatus.CANCELLED,
+
+        cancelledBy: AppointmentCancelledBy.CUSTOMER,
+
+        cancellationReason: null,
+
+        cancelledAt: new Date(),
       },
     });
+  }
+
+  async remove(id: string, professionalId: string) {
+    if (!professionalId) {
+      throw new BadRequestException('Profissional não identificado.');
+    }
+
+    const appointment = await this.prisma.appointment.findFirst({
+      where: {
+        id,
+        professionalId,
+      },
+    });
+
+    if (!appointment) {
+      throw new NotFoundException('Agendamento não encontrado.');
+    }
+
+    /*
+     * Não deixamos apagar um agendamento
+     * que ainda precisa ser atendido.
+     */
+    const removableStatuses: AppointmentStatus[] = [
+      AppointmentStatus.CANCELLED,
+      AppointmentStatus.COMPLETED,
+      AppointmentStatus.NO_SHOW,
+    ];
+
+    if (!removableStatuses.includes(appointment.status)) {
+      throw new BadRequestException(
+        'Somente agendamentos cancelados, concluídos ou marcados como não compareceu podem ser excluídos.',
+      );
+    }
+
+    await this.prisma.appointment.delete({
+      where: {
+        id,
+      },
+    });
+
+    return {
+      id,
+      message: 'Agendamento removido com sucesso.',
+    };
   }
 }
