@@ -1,21 +1,16 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { Edit2, Plus, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { Edit2, Plus, Trash2 } from "lucide-react";
 
-import api from '@/lib/api';
-import type { Service } from '@/types';
-import { useAuth } from '@/hooks/useAuth';
+import api from "@/lib/api";
+import type { Service } from "@/types";
+import { useAuth } from "@/hooks/useAuth";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { Button } from '@/components/ui/button';
+import { Button } from "@/components/ui/button";
 
 import {
   Sheet,
@@ -24,11 +19,11 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
-} from '@/components/ui/sheet';
+} from "@/components/ui/sheet";
 
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 type ServiceFormData = {
   name: string;
@@ -38,8 +33,8 @@ type ServiceFormData = {
 };
 
 const DEFAULT_FORM_VALUES: ServiceFormData = {
-  name: '',
-  description: '',
+  name: "",
+  description: "",
   durationMinutes: 30,
   price: 0,
 };
@@ -51,8 +46,7 @@ export default function ServicesPage() {
   const [loading, setLoading] = useState(true);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [editingService, setEditingService] =
-    useState<Service | null>(null);
+  const [editingService, setEditingService] = useState<Service | null>(null);
 
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -73,11 +67,11 @@ export default function ServicesPage() {
    */
   const fetchServices = useCallback(async () => {
     try {
-      const response = await api.get<Service[]>('/services');
+      const response = await api.get<Service[]>("/services");
 
       setServices(response.data ?? []);
     } catch (err) {
-      console.error('Erro ao buscar serviços:', err);
+      console.error("Erro ao buscar serviços:", err);
     } finally {
       setLoading(false);
     }
@@ -96,7 +90,7 @@ export default function ServicesPage() {
 
       reset({
         name: service.name,
-        description: service.description ?? '',
+        description: service.description ?? "",
         durationMinutes: service.durationMinutes,
         price: Number(service.price),
       });
@@ -132,42 +126,25 @@ export default function ServicesPage() {
          *
          * Não enviamos professionalId no PATCH.
          */
-        await api.patch(
-          `/services/${editingService.id}`,
-          data,
-        );
+        await api.patch(`/services/${editingService.id}`, data);
       } else {
         /*
          * CRIAÇÃO
          *
-         * Seu backend atual exige professionalId no CreateServiceDto.
+         * O backend resolve o professionalId do JWT.
+         * Não enviamos professionalId no body.
          */
-        const professionalId = user?.professional?.id;
-
-        if (!professionalId) {
-          alert(
-            'Não foi possível identificar o profissional logado.',
-          );
-
-          return;
-        }
-
-        await api.post('/services', {
-          ...data,
-          professionalId,
-        });
+        await api.post("/services", data);
       }
 
       await fetchServices();
 
       handleCloseModal();
     } catch (err) {
-      console.error('Erro ao salvar serviço:', err);
+      console.error("Erro ao salvar serviço:", err);
 
       alert(
-        editingService
-          ? 'Erro ao editar serviço.'
-          : 'Erro ao criar serviço.',
+        editingService ? "Erro ao editar serviço." : "Erro ao criar serviço.",
       );
     } finally {
       setIsSaving(false);
@@ -178,9 +155,7 @@ export default function ServicesPage() {
    * Exclui um serviço.
    */
   const handleDelete = async (id: string) => {
-    const confirmed = window.confirm(
-      'Deseja realmente excluir este serviço?',
-    );
+    const confirmed = window.confirm("Deseja realmente excluir este serviço?");
 
     if (!confirmed) return;
 
@@ -194,14 +169,18 @@ export default function ServicesPage() {
        * fazer outra consulta ao backend.
        */
       setServices((currentServices) =>
-        currentServices.filter(
-          (service) => service.id !== id,
-        ),
+        currentServices.filter((service) => service.id !== id),
       );
-    } catch (err) {
-      console.error('Erro ao excluir serviço:', err);
+    } catch (error: any) {
+      console.error("Erro ao excluir serviço:", error);
 
-      alert('Erro ao excluir serviço.');
+      const message = error.response?.data?.message;
+
+      alert(
+        Array.isArray(message)
+          ? message.join("\n")
+          : (message ?? "Erro ao excluir serviço."),
+      );
     } finally {
       setDeletingId(null);
     }
@@ -210,10 +189,7 @@ export default function ServicesPage() {
   /*
    * Ativa ou desativa um serviço.
    */
-  const toggleActive = async (
-    id: string,
-    currentStatus: boolean,
-  ) => {
+  const toggleActive = async (id: string, currentStatus: boolean) => {
     if (togglingId === id) return;
 
     setTogglingId(id);
@@ -240,12 +216,9 @@ export default function ServicesPage() {
         ),
       );
     } catch (err) {
-      console.error(
-        'Erro ao alterar status do serviço:',
-        err,
-      );
+      console.error("Erro ao alterar status do serviço:", err);
 
-      alert('Erro ao alterar status do serviço.');
+      alert("Erro ao alterar status do serviço.");
     } finally {
       setTogglingId(null);
     }
@@ -266,9 +239,7 @@ export default function ServicesPage() {
     <div className="space-y-6">
       {/* Cabeçalho */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">
-          Meus Serviços
-        </h2>
+        <h2 className="text-2xl font-bold text-gray-900">Meus Serviços</h2>
 
         <Button
           type="button"
@@ -276,7 +247,6 @@ export default function ServicesPage() {
           className="cursor-pointer transition-colors hover:bg-blue-700"
         >
           <Plus className="mr-2 h-4 w-4" />
-
           Novo Serviço
         </Button>
       </div>
@@ -295,69 +265,55 @@ export default function ServicesPage() {
         <SheetContent className="overflow-y-auto p-6 sm:max-w-[425px]">
           <SheetHeader className="mb-4">
             <SheetTitle>
-              {editingService
-                ? 'Editar Serviço'
-                : 'Novo Serviço'}
+              {editingService ? "Editar Serviço" : "Novo Serviço"}
             </SheetTitle>
 
             <SheetDescription>
               {editingService
-                ? 'Altere os dados do serviço selecionado.'
-                : 'Preencha os dados para cadastrar um novo serviço.'}
+                ? "Altere os dados do serviço selecionado."
+                : "Preencha os dados para cadastrar um novo serviço."}
             </SheetDescription>
           </SheetHeader>
 
-          <form
-            onSubmit={handleSubmit(onSubmit)}
-            className="space-y-4"
-          >
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {/* Nome */}
             <div className="space-y-2">
-              <Label htmlFor="name">
-                Nome
-              </Label>
+              <Label htmlFor="name">Nome</Label>
 
               <Input
                 id="name"
                 placeholder="Ex.: Corte de cabelo"
                 disabled={isSaving}
-                {...register('name', {
-                  required: 'Informe o nome do serviço.',
+                {...register("name", {
+                  required: "Informe o nome do serviço.",
                   minLength: {
                     value: 2,
-                    message:
-                      'O nome deve possuir pelo menos 2 caracteres.',
+                    message: "O nome deve possuir pelo menos 2 caracteres.",
                   },
                 })}
               />
 
               {errors.name && (
-                <p className="text-sm text-red-600">
-                  {errors.name.message}
-                </p>
+                <p className="text-sm text-red-600">{errors.name.message}</p>
               )}
             </div>
 
             {/* Descrição */}
             <div className="space-y-2">
-              <Label htmlFor="description">
-                Descrição
-              </Label>
+              <Label htmlFor="description">Descrição</Label>
 
               <Textarea
                 id="description"
                 placeholder="Descreva brevemente o serviço..."
                 disabled={isSaving}
-                {...register('description')}
+                {...register("description")}
               />
             </div>
 
             {/* Duração + preço */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="durationMinutes">
-                  Duração (min)
-                </Label>
+                <Label htmlFor="durationMinutes">Duração (min)</Label>
 
                 <Input
                   id="durationMinutes"
@@ -365,14 +321,12 @@ export default function ServicesPage() {
                   min={1}
                   step={1}
                   disabled={isSaving}
-                  {...register('durationMinutes', {
+                  {...register("durationMinutes", {
                     valueAsNumber: true,
-                    required:
-                      'Informe a duração do serviço.',
+                    required: "Informe a duração do serviço.",
                     min: {
                       value: 1,
-                      message:
-                        'A duração deve ser maior que zero.',
+                      message: "A duração deve ser maior que zero.",
                     },
                   })}
                 />
@@ -385,9 +339,7 @@ export default function ServicesPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="price">
-                  Preço (R$)
-                </Label>
+                <Label htmlFor="price">Preço (R$)</Label>
 
                 <Input
                   id="price"
@@ -395,22 +347,18 @@ export default function ServicesPage() {
                   min={0.01}
                   step="0.01"
                   disabled={isSaving}
-                  {...register('price', {
+                  {...register("price", {
                     valueAsNumber: true,
-                    required:
-                      'Informe o preço do serviço.',
+                    required: "Informe o preço do serviço.",
                     min: {
                       value: 0.01,
-                      message:
-                        'O preço deve ser maior que zero.',
+                      message: "O preço deve ser maior que zero.",
                     },
                   })}
                 />
 
                 {errors.price && (
-                  <p className="text-sm text-red-600">
-                    {errors.price.message}
-                  </p>
+                  <p className="text-sm text-red-600">{errors.price.message}</p>
                 )}
               </div>
             </div>
@@ -426,15 +374,12 @@ export default function ServicesPage() {
                 Cancelar
               </Button>
 
-              <Button
-                type="submit"
-                disabled={isSaving}
-              >
+              <Button type="submit" disabled={isSaving}>
                 {isSaving
-                  ? 'Salvando...'
+                  ? "Salvando..."
                   : editingService
-                    ? 'Salvar alterações'
-                    : 'Cadastrar serviço'}
+                    ? "Salvar alterações"
+                    : "Cadastrar serviço"}
               </Button>
             </SheetFooter>
           </form>
@@ -459,7 +404,6 @@ export default function ServicesPage() {
               onClick={() => handleOpenModal()}
             >
               <Plus className="mr-2 h-4 w-4" />
-
               Novo Serviço
             </Button>
           </CardContent>
@@ -467,20 +411,16 @@ export default function ServicesPage() {
       ) : (
         <div className="space-y-4">
           {services.map((service) => {
-            const isDeleting =
-              deletingId === service.id;
+            const isDeleting = deletingId === service.id;
 
-            const isToggling =
-              togglingId === service.id;
+            const isToggling = togglingId === service.id;
 
             return (
               <Card key={service.id}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <CardTitle className="text-lg">
-                        {service.name}
-                      </CardTitle>
+                      <CardTitle className="text-lg">{service.name}</CardTitle>
 
                       {service.description && (
                         <p className="mt-1 text-sm text-gray-500">
@@ -492,23 +432,18 @@ export default function ServicesPage() {
                     <button
                       type="button"
                       disabled={isToggling}
-                      onClick={() =>
-                        toggleActive(
-                          service.id,
-                          service.isActive,
-                        )
-                      }
+                      onClick={() => toggleActive(service.id, service.isActive)}
                       className={`shrink-0 cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 ${
                         service.isActive
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-200 text-gray-600'
+                          ? "bg-green-100 text-green-700"
+                          : "bg-gray-200 text-gray-600"
                       }`}
                     >
                       {isToggling
-                        ? 'Alterando...'
+                        ? "Alterando..."
                         : service.isActive
-                          ? 'Ativo'
-                          : 'Inativo'}
+                          ? "Ativo"
+                          : "Inativo"}
                     </button>
                   </div>
                 </CardHeader>
@@ -516,16 +451,12 @@ export default function ServicesPage() {
                 <CardContent>
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex flex-wrap gap-3 text-sm text-gray-600">
-                      <span>
-                        ⏱ {service.durationMinutes} min
-                      </span>
+                      <span>⏱ {service.durationMinutes} min</span>
 
                       <span className="font-semibold text-blue-600">
-                        {Number(
-                          service.price,
-                        ).toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
+                        {Number(service.price).toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
                         })}
                       </span>
                     </div>
@@ -537,9 +468,7 @@ export default function ServicesPage() {
                         size="sm"
                         variant="outline"
                         disabled={isDeleting}
-                        onClick={() =>
-                          handleOpenModal(service)
-                        }
+                        onClick={() => handleOpenModal(service)}
                         className="cursor-pointer transition-colors hover:bg-gray-100"
                         aria-label={`Editar ${service.name}`}
                       >
@@ -552,9 +481,7 @@ export default function ServicesPage() {
                         size="sm"
                         variant="destructive"
                         disabled={isDeleting}
-                        onClick={() =>
-                          handleDelete(service.id)
-                        }
+                        onClick={() => handleDelete(service.id)}
                         className="cursor-pointer transition-colors hover:bg-red-700"
                         aria-label={`Excluir ${service.name}`}
                       >
