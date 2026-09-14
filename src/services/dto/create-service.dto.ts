@@ -17,10 +17,6 @@ export class CreateServiceDto {
   @IsPositive()
   price!: number; // Preço do serviço
 
-  @IsString()
-  @IsNotEmpty({ message: 'O ID do profissional é obrigatório.' })
-  professionalId!: string;
-
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
