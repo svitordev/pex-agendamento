@@ -32,7 +32,7 @@ export class AuthService {
         password: hashedPassword,
         firstName: dto.firstName,
         lastName: dto.lastName,
-        role: dto.role ?? 'PROFESSIONAL',
+        role: 'PROFESSIONAL',
       },
     });
 

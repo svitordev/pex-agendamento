@@ -59,25 +59,47 @@ async function main() {
   console.log(`✅ ${servicesData.length} serviços criados`);
 
   // 4. Criar Disponibilidade Semanal
-  const availabilities = [
-    { dayOfWeek: 1, startTime: '09:00', endTime: '18:00' }, // Segunda
-    { dayOfWeek: 2, startTime: '09:00', endTime: '18:00' }, // Terça
-    { dayOfWeek: 3, startTime: '09:00', endTime: '18:00' }, // Quarta
-    { dayOfWeek: 4, startTime: '09:00', endTime: '18:00' }, // Quinta
-    { dayOfWeek: 5, startTime: '09:00', endTime: '18:00' }, // Sexta
-    { dayOfWeek: 6, startTime: '09:00', endTime: '14:00' }, // Sábado
+  const schedule = [
+    { dayOfWeek: 1, endTime: '18:00' }, // Segunda
+    { dayOfWeek: 2, endTime: '18:00' }, // Terça
+    { dayOfWeek: 3, endTime: '18:00' }, // Quarta
+    { dayOfWeek: 4, endTime: '18:00' }, // Quinta
+    { dayOfWeek: 5, endTime: '18:00' }, // Sexta
+    { dayOfWeek: 6, endTime: '14:00' }, // Sábado
   ];
 
-  for (const a of availabilities) {
-    await prisma.availability.upsert({
+  for (const s of schedule) {
+    // 1) Upsert Availability (professionalId + dayOfWeek é único)
+    const availability = await prisma.availability.upsert({
       where: {
         professionalId_dayOfWeek: {
           professionalId: professional.id,
-          dayOfWeek: a.dayOfWeek,
+          dayOfWeek: s.dayOfWeek,
         },
       },
-      update: a,
-      create: { ...a, professionalId: professional.id },
+      create: {
+        dayOfWeek: s.dayOfWeek,
+        professionalId: professional.id,
+      },
+      update: {},
+    });
+
+    // 2) Upsert AvailabilityPeriod (availabilityId + startTime é único)
+    await prisma.availabilityPeriod.upsert({
+      where: {
+        availabilityId_startTime: {
+          availabilityId: availability.id,
+          startTime: '09:00',
+        },
+      },
+      create: {
+        availabilityId: availability.id,
+        startTime: '09:00',
+        endTime: s.endTime,
+      },
+      update: {
+        endTime: s.endTime,
+      },
     });
   }
 
